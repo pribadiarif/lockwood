@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds the macOS desktop app from this checkout and replaces the installed
-# "Lockwood & Co. (Alpha)" in /Applications, then relaunches it.
+# "Lockwood & Co." in /Applications, then relaunches it.
 #
 # Usage: vp run alpha
 #
@@ -8,11 +8,10 @@
 # when this command was started by an agent inside the Alpha app it replaces.
 set -euo pipefail
 
-APP_NAME="Lockwood & Co. (Alpha)"
+APP_NAME="Lockwood & Co."
 APP_PATH="/Applications/${APP_NAME}.app"
-# The bundle's name before the rebrand; replaced on the first install.
-LEGACY_APP_NAME="T3 Code (Alpha)"
-LEGACY_APP_PATH="/Applications/${LEGACY_APP_NAME}.app"
+# Earlier names of the same bundle; replaced on the next install.
+LEGACY_APP_NAMES=("Lockwood & Co. (Alpha)" "T3 Code (Alpha)")
 LOG_FILE="${HOME}/.t3/install-alpha.log"
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
@@ -44,11 +43,16 @@ if [[ "${1:-}" == "--install-phase" ]]; then
   echo "[$(date '+%H:%M:%S')] installing ${dmg}"
 
   quit_app "$APP_NAME"
-  quit_app "$LEGACY_APP_NAME"
+  for legacy_name in "${LEGACY_APP_NAMES[@]}"; do
+    quit_app "$legacy_name"
+  done
 
   mount_point="$(hdiutil attach -nobrowse -readonly "$dmg" | awk -F'\t' '/\/Volumes\//{print $NF}')"
   trap 'hdiutil detach "$mount_point" -quiet || true' EXIT
-  rm -rf "$APP_PATH" "$LEGACY_APP_PATH"
+  rm -rf "$APP_PATH"
+  for legacy_name in "${LEGACY_APP_NAMES[@]}"; do
+    rm -rf "/Applications/${legacy_name}.app"
+  done
   ditto "${mount_point}/${APP_NAME}.app" "$APP_PATH"
   open "$APP_PATH"
   echo "[$(date '+%H:%M:%S')] done: ${APP_NAME} updated and relaunched"

@@ -425,8 +425,8 @@ function ConnectionStep({
       ) : null}
       <div className="mt-6 flex flex-col-reverse gap-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
         <p className="min-w-0 text-xs leading-relaxed text-muted-foreground">
-          T3 Code collects anonymous usage data to help us improve it. To read more about how your
-          data is used and how to opt out, see our{" "}
+          Lockwood & Co. collects anonymous usage data to help us improve it. To read more about how
+          your data is used and how to opt out, see our{" "}
           <a
             className="underline underline-offset-2 hover:text-foreground"
             href={PRIVACY_POLICY_URL}
@@ -523,7 +523,7 @@ function ConnectAccountOption({
             </p>
             <CommandBlock command="npx t3 connect" className="mt-3" />
             <p className="mt-3 text-xs text-muted-foreground">
-              Keep T3 Code running. Select the computers you want to set up above.
+              Keep Lockwood & Co. running. Select the computers you want to set up above.
             </p>
           </div>
         </CollapsiblePanel>
@@ -637,8 +637,8 @@ function PairingForm({
             </p>
             <CommandBlock command="npx t3 pair" className="mt-2" />
             <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-              Start T3 Code first, or run <code className="font-mono">npx t3 serve</code>. Add{" "}
-              <code className="font-mono">--tailscale</code> to use your tailnet.
+              Start Lockwood & Co. first, or run <code className="font-mono">npx t3 serve</code>.
+              Add <code className="font-mono">--tailscale</code> to use your tailnet.
             </p>
           </CollapsiblePanel>
         </Collapsible>

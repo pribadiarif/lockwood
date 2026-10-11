@@ -30,7 +30,7 @@ const GNOME_ACCESS_COPY = {
   "not-installed": {
     title: "Install the extension",
     description:
-      "The T3 Code GNOME extension lets you capture other windows and bring them into your draft. Sign out once after installing.",
+      "The Lockwood & Co. GNOME extension lets you capture other windows and bring them into your draft. Sign out once after installing.",
   },
   "restart-required": {
     title: "Extension installed",
@@ -174,7 +174,7 @@ export function SnapShotSetupDialog({
                       ? "Update the capture helper"
                       : "Allow snapshots",
                   description:
-                    "T3 Code's capture helper lets you capture other apps and return to your draft. It's included with T3 Code.",
+                    "Lockwood & Co.'s capture helper lets you capture other apps and return to your draft. It's included with Lockwood & Co.",
                 }
           : backend === "niri"
             ? {
@@ -355,7 +355,7 @@ export function SnapShotSetupDialog({
                     </p>
                   ))}
                   {step === "access" && (backend === "gnome" || helperBackend) ? (
-                    <p>Included with T3 Code. No download needed.</p>
+                    <p>Included with Lockwood & Co. No download needed.</p>
                   ) : null}
                   {step === "access" && backend === "gnome" && extension?.status === "enabled" ? (
                     <Button
