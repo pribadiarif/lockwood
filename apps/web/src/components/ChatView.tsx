@@ -493,6 +493,13 @@ import { ThreadStatusLine } from "./chat/ThreadStatusLine";
 import { formatRelativeTimeLabel, formatRelativeTimeUntilLabel } from "../timestampFormat";
 import { ComposerSurface } from "./chat/ComposerSurface";
 import { resolveComposerPromptSuggestion } from "./chat/composerPromptSuggestion";
+import { PRIMARY_PANE_ID, splitPaneId, useSplitViewStore } from "../splitViewStore";
+import {
+  isChatPaneActive,
+  useChatPaneId,
+  useIsChatPaneActive,
+  useIsSplitView,
+} from "./chat/chatPane";
 import { resolveThreadSyncPhase } from "../threadSync";
 import {
   hasAvailableCompactionProvider,
@@ -1581,6 +1588,9 @@ export default function ChatView(props: ChatViewProps) {
     reserveTitleBarControlInset = true,
     forceExpandedMobileComposer = false,
   } = props;
+  const chatPaneId = useChatPaneId();
+  const isPaneActive = useIsChatPaneActive(chatPaneId);
+  const isSplitView = useIsSplitView();
   const canOperateThread = useEnvironmentScope(environmentId, AuthOrchestrationOperateScope);
   const canOperateTerminal = useEnvironmentScope(environmentId, AuthTerminalOperateScope);
   const hasTerminalWriteAccess = useCallback(
@@ -2352,7 +2362,8 @@ export default function ChatView(props: ChatViewProps) {
     [allocatableActiveTerminalIds, canReuseTerminal, environmentId],
   );
   const previewPanelOpen = activeRightPanelKind === "preview" && browserAvailable;
-  const rightPanelOpen = rightPanelState.isOpen;
+  // In a split view only the active pane shows its right panel; the others stay chat-only.
+  const rightPanelOpen = rightPanelState.isOpen && (!isSplitView || isPaneActive);
   const { active: panelAnimationsActive, durationMs: panelAnimationDurationMs } =
     usePanelAnimationSettings();
   const activeTerminalDrawerPresence = usePanelPresence(
@@ -2428,10 +2439,27 @@ export default function ChatView(props: ChatViewProps) {
     }
   }, [activePreviewMiniPlayer, activePreviewState.sessions, activeThreadRef, previewSessionsReady]);
 
+  const splitPaneThreadKeys = useSplitViewStore((state) => state.panes);
   const existingOpenTerminalThreadKeys = useMemo(() => {
     const existingThreadKeys = new Set<string>([...serverThreadKeys, ...draftThreadKeys]);
-    return openTerminalThreadKeys.filter((nextThreadKey) => existingThreadKeys.has(nextThreadKey));
-  }, [draftThreadKeys, openTerminalThreadKeys, serverThreadKeys]);
+    // Each terminal attaches in one pane only: the route's pane keeps the hidden
+    // drawers, minus threads another pane shows; split panes mount just their own.
+    const shownElsewhere = new Set(splitPaneThreadKeys.map(splitPaneId));
+    return openTerminalThreadKeys.filter(
+      (nextThreadKey) =>
+        existingThreadKeys.has(nextThreadKey) &&
+        (chatPaneId === PRIMARY_PANE_ID
+          ? !shownElsewhere.has(nextThreadKey) || nextThreadKey === activeThreadKey
+          : nextThreadKey === activeThreadKey),
+    );
+  }, [
+    activeThreadKey,
+    chatPaneId,
+    draftThreadKeys,
+    openTerminalThreadKeys,
+    serverThreadKeys,
+    splitPaneThreadKeys,
+  ]);
   useEffect(() => {
     setMountedTerminalThreadKeys((currentThreadIds) => {
       const nextThreadIds = reconcileMountedTerminalThreadIds({
@@ -4614,7 +4642,13 @@ export default function ChatView(props: ChatViewProps) {
       );
     }
   }, [activeThread, environmentId, interruptThreadTurn, setThreadError]);
-  useEffect(() => subscribeSnapShotComposerFocus(focusComposer), [focusComposer]);
+  useEffect(
+    () =>
+      subscribeSnapShotComposerFocus(() => {
+        if (isChatPaneActive(chatPaneId)) focusComposer();
+      }),
+    [chatPaneId, focusComposer],
+  );
   const scheduleComposerFocus = useCallback(() => {
     window.requestAnimationFrame(() => {
       focusComposer();
@@ -6292,9 +6326,9 @@ export default function ChatView(props: ChatViewProps) {
   useEffect(
     () =>
       subscribePreviewAction((action) => {
-        if (action === "toggle-panel") togglePreviewPanel();
+        if (action === "toggle-panel" && isChatPaneActive(chatPaneId)) togglePreviewPanel();
       }),
-    [togglePreviewPanel],
+    [chatPaneId, togglePreviewPanel],
   );
   const persistThreadSettingsForNextTurn = useCallback(
     async (input: {
@@ -6621,6 +6655,9 @@ export default function ChatView(props: ChatViewProps) {
         // the end on the next stream chunk. Clicking message text can leave
         // DOM focus on body, so these keys must also be heard at document.
         const handleKeyDown = (event: KeyboardEvent) => {
+          if (!scrollNode.contains(event.target as Node | null) && !isChatPaneActive(chatPaneId)) {
+            return;
+          }
           if (
             !(event.target instanceof Node) ||
             (!scrollNode.contains(event.target) &&
@@ -6869,7 +6906,7 @@ export default function ChatView(props: ChatViewProps) {
   useEffect(() => {
     if (!activeThread?.id || terminalUiState.terminalOpen) return;
     const frame = window.requestAnimationFrame(() => {
-      focusComposer();
+      if (isChatPaneActive(chatPaneId)) focusComposer();
     });
     return () => {
       window.cancelAnimationFrame(frame);
@@ -6894,6 +6931,7 @@ export default function ChatView(props: ChatViewProps) {
           frame = null;
           // A full-screen app owns the page; refocusing the composer would close it.
           if (document.querySelector("[data-mcp-app-fullscreen]") !== null) return;
+          if (!isChatPaneActive(chatPaneId)) return;
           if (shouldRefocusComposerOnWindowFocus(document.activeElement)) focusComposer();
         });
       });
@@ -8027,6 +8065,7 @@ export default function ChatView(props: ChatViewProps) {
 
   useEffect(() => {
     const handler = (event: globalThis.KeyboardEvent) => {
+      if (!isChatPaneActive(chatPaneId)) return;
       if (preventRepeatedTerminalCloseShortcut(event, keybindings)) {
         event.stopPropagation();
         return;
@@ -8398,16 +8437,18 @@ export default function ChatView(props: ChatViewProps) {
   // A focused desktop browser page forwards these chords as menu actions.
   useEffect(() => {
     return window.desktopBridge?.onMenuAction((action) => {
+      if (!isChatPaneActive(chatPaneId)) return;
       if (action === "rightPanel.toggle") toggleRightPanel();
       else if (action === "rightPanel.toggleMaximized") toggleRightPanelMaximized();
     });
-  }, [toggleRightPanel, toggleRightPanelMaximized]);
+  }, [chatPaneId, toggleRightPanel, toggleRightPanelMaximized]);
 
   // Paste-to-focus: the resting composer blurs on a click into the timeline,
   // so a paste that follows has no editable target and would be dropped.
   // Route it to the composer like a typed key, which also expands it.
   useEffect(() => {
     const keyHandler = (event: KeyboardEvent) => {
+      if (!isChatPaneActive(chatPaneId)) return;
       if (
         shouldRedirectInputToComposer(event) &&
         isPasteAsTextShortcut(event, isMacPlatform(navigator.platform))
@@ -8416,6 +8457,7 @@ export default function ChatView(props: ChatViewProps) {
       }
     };
     const handler = (event: ClipboardEvent) => {
+      if (!isChatPaneActive(chatPaneId)) return;
       if (!activeThreadId || isCommandPaletteOpen()) return;
       if (getTerminalFocusOwner() !== null) return;
       if (composerRef.current?.isModelPickerOpen()) return;

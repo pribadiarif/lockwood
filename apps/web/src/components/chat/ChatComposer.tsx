@@ -254,6 +254,7 @@ import type {
   ServerProviderUsageLimits,
 } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
+import { isChatPaneActive, useChatPaneId } from "./chatPane";
 import { resolveAssetUrl } from "~/assets/assetUrls";
 import { assetEnvironment } from "~/state/assets";
 import { readPreparedConnection } from "~/state/session";
@@ -2248,6 +2249,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     [selectedProviderEntry],
   );
   const navigate = useNavigate();
+  const chatPaneId = useChatPaneId();
   const openUsagePage = useCallback(() => {
     void navigate({ to: "/usage" });
   }, [navigate]);
@@ -2560,6 +2562,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       pasteAsTextShortcutUntilRef.current = 0;
     };
     const onDesktopPasteAsText = () => {
+      if (!isChatPaneActive(chatPaneId)) return;
       const activeElement = document.activeElement;
       const blocksPasteToFocus =
         activeElement instanceof Element &&
@@ -5762,6 +5765,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
 
   useEffect(() => {
     const handler = (event: globalThis.KeyboardEvent) => {
+      if (!isChatPaneActive(chatPaneId)) return;
       const command = resolveShortcutCommand(event, keybindings, {
         context: {
           terminalFocus: getTerminalFocusOwner() !== null,

@@ -85,6 +85,7 @@ import { releaseProjectDraftUploads } from "../lib/composerDraftUploads";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import { isMacPlatform } from "../lib/utils";
 import { useSidebarPendingFileDropStore } from "../sidebarPendingFileDropStore";
+import { useSplitViewStore } from "../splitViewStore";
 import { makeWorkspaceFileDropHandlers } from "./chat/workspaceFileDrop";
 import {
   readThreadShell,
@@ -1227,7 +1228,6 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
   const clearPendingFileDrop = useSidebarPendingFileDropStore((s) => s.clearPendingFileDrop);
   const { isMobile, setOpenMobile } = useSidebar();
   const setProjectExpanded = useUiStateStore((state) => state.setProjectExpanded);
-  const toggleThreadSelection = useThreadSelectionStore((state) => state.toggleThread);
   const rangeSelectTo = useThreadSelectionStore((state) => state.rangeSelectTo);
   const clearSelection = useThreadSelectionStore((state) => state.clearSelection);
   const removeFromSelection = useThreadSelectionStore((state) => state.removeFromSelection);
@@ -1861,7 +1861,12 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
 
       if (isModClick) {
         event.preventDefault();
-        toggleThreadSelection(threadKey);
+        useSplitViewStore
+          .getState()
+          .openInSplit(
+            threadRef,
+            activeRouteThreadKey ? parseScopedThreadKey(activeRouteThreadKey) : null,
+          );
         return;
       }
 
@@ -1897,7 +1902,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       router,
       setOpenMobile,
       setSelectionAnchor,
-      toggleThreadSelection,
+      activeRouteThreadKey,
     ],
   );
 
@@ -2298,6 +2303,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       );
       const clicked = await api.contextMenu.show(
         [
+          { id: "open-in-split", label: "Open in split" },
           ...(thread.branch
             ? [{ id: "new-thread-on-branch", label: `New thread on ${thread.branch}` }]
             : []),
@@ -2317,6 +2323,15 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         position,
       );
 
+      if (clicked === "open-in-split") {
+        useSplitViewStore
+          .getState()
+          .openInSplit(
+            threadRef,
+            activeRouteThreadKey ? parseScopedThreadKey(activeRouteThreadKey) : null,
+          );
+        return;
+      }
       if (clicked === "project-settings") {
         if (isMobile) setOpenMobile(false);
         void router.navigate({
@@ -2418,6 +2433,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       router,
       setOpenMobile,
       startThreadRename,
+      activeRouteThreadKey,
     ],
   );
 
