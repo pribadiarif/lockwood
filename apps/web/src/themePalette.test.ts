@@ -33,6 +33,7 @@ import {
   GROVE_THEME,
   IRIS_THEME,
   OCEAN_THEME,
+  LOCKWOOD_THEME,
   updateCustomTheme,
   updateThemeColorFamily,
   CUSTOM_THEMES_STORAGE_KEY,
@@ -118,6 +119,23 @@ describe("theme files", () => {
       for (const background of [colors.muted, colors.messageSurface, colors.codeBackground]) {
         expect(distance(colors.searchMatchBackground, background)).toBeGreaterThan(0.08);
         expect(distance(colors.searchMatchActiveBackground, background)).toBeGreaterThan(0.08);
+      }
+    }
+  });
+
+  it("keeps Lockwood text and actions readable in both appearances", () => {
+    for (const appearance of ["light", "dark"] as const) {
+      const colors = getThemeColorsForMode(LOCKWOOD_THEME, appearance)!;
+      for (const [foreground, background] of [
+        [colors.text, colors.canvas],
+        [colors.textMuted, colors.canvas],
+        [colors.placeholder, colors.surfaceRaised],
+        [colors.sidebarForeground, colors.sidebar],
+        [colors.messageForeground, colors.messageSurface],
+        [colors.accentForeground, colors.accent],
+        [colors.messageActionForeground, colors.messageAction],
+      ]) {
+        expect(contrastRatio(foreground!, background!)).toBeGreaterThanOrEqual(4.5);
       }
     }
   });
