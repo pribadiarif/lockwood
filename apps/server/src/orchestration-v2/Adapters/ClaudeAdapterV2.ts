@@ -7679,7 +7679,11 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
         // turn's first frame, so the prompt's own turn streams without delay.
         // A CLI that echoes only on the result (or not at all) is never held,
         // exactly as before this gate.
-        /** Stores Claude's predicted next prompt on its provider thread. */
+        /**
+         * Reports Claude's predicted next prompt. Only ids come from the cache;
+         * the ingestor patches the stored provider thread, so a stale cached
+         * status never lands.
+         */
         const applyClaudePromptSuggestion = Effect.fnUntraced(function* (
           message: Extract<SDKMessage, { type: "prompt_suggestion" }>,
         ) {
@@ -7688,18 +7692,13 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           const providerThread = (yield* Ref.get(lastProviderThreadByNativeThread)).get(
             message.session_id,
           );
-          if (providerThread === undefined) return;
-          const now = yield* DateTime.now;
-          const updated = {
-            ...providerThread,
-            promptSuggestion: { text, createdAt: now },
-            updatedAt: now,
-          };
-          yield* rememberProviderThread(updated);
+          if (providerThread === undefined || providerThread.appThreadId === null) return;
           yield* emitProviderEvent({
-            type: "provider_thread.updated",
+            type: "provider_thread.prompt_suggested",
             driver: CLAUDE_PROVIDER,
-            providerThread: updated,
+            threadId: providerThread.appThreadId,
+            providerThreadId: providerThread.id,
+            promptSuggestion: { text, createdAt: DateTime.formatIso(yield* DateTime.now) },
           });
         });
 

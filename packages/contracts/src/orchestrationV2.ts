@@ -956,7 +956,8 @@ export type OrchestrationV2ProviderGoal = typeof OrchestrationV2ProviderGoal.Typ
 
 export const OrchestrationV2PromptSuggestion = Schema.Struct({
   text: Schema.String.check(Schema.isMaxLength(2000)),
-  createdAt: Schema.DateTimeUtc,
+  /** ISO timestamp; a string so the nested value survives JSON payload storage. */
+  createdAt: Schema.String,
 });
 export type OrchestrationV2PromptSuggestion = typeof OrchestrationV2PromptSuggestion.Type;
 

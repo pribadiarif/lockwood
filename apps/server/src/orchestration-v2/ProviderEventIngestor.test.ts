@@ -323,6 +323,78 @@ layer("ProviderEventIngestorV2", (it) => {
     }),
   );
 
+  it.effect("patches a prompt suggestion onto the stored provider thread", () =>
+    Effect.gen(function* () {
+      const now = yield* DateTime.now;
+      const eventSink = yield* EventSink.EventSinkV2;
+      const projectionStore = yield* ProjectionStore.ProjectionStoreV2;
+      const ingestor = yield* ProviderEventIngestor.ProviderEventIngestorV2;
+      const idAllocator = yield* IdAllocator.IdAllocatorV2;
+      const threadEvent = yield* threadCreatedEvent(now);
+      const providerSessionId = yield* idAllocator.allocate.providerSession({
+        providerInstanceId: modelSelection.instanceId,
+        threadId: threadEvent.threadId,
+      });
+      const providerThread: OrchestrationV2ProviderThread = {
+        id: idAllocator.derive.providerThread({
+          driver: CODEX_DRIVER,
+          nativeThreadId: "suggestion-thread",
+        }),
+        driver: CODEX_DRIVER,
+        providerInstanceId: modelSelection.instanceId,
+        providerSessionId,
+        appThreadId: threadEvent.threadId,
+        ownerNodeId: null,
+        nativeThreadRef: {
+          driver: CODEX_DRIVER,
+          nativeId: "suggestion-thread",
+          strength: "strong",
+        },
+        nativeConversationHeadRef: null,
+        status: "idle",
+        firstRunOrdinal: 1,
+        lastRunOrdinal: 1,
+        handoffIds: [],
+        forkedFrom: null,
+        createdAt: now,
+        updatedAt: now,
+      };
+      yield* eventSink.write({ events: [threadEvent] });
+      yield* ingestor.ingestNormalized({
+        providerSessionId,
+        providerInstanceId: modelSelection.instanceId,
+        threadId: threadEvent.threadId,
+        event: { type: "provider_thread.updated", driver: CODEX_DRIVER, providerThread },
+      });
+      const suggest = (providerThreadId: OrchestrationV2ProviderThread["id"]) =>
+        ingestor.ingestNormalized({
+          providerSessionId,
+          providerInstanceId: modelSelection.instanceId,
+          threadId: threadEvent.threadId,
+          event: {
+            type: "provider_thread.prompt_suggested",
+            driver: CODEX_DRIVER,
+            threadId: threadEvent.threadId,
+            providerThreadId,
+            promptSuggestion: { text: "run the tests", createdAt: DateTime.formatIso(now) },
+          },
+        });
+
+      const unknown = yield* suggest(
+        idAllocator.derive.providerThread({ driver: CODEX_DRIVER, nativeThreadId: "other" }),
+      );
+      const stored = yield* suggest(providerThread.id);
+      const projection = yield* projectionStore.getThreadProjection(threadEvent.threadId);
+
+      assert.lengthOf(unknown, 0);
+      assert.lengthOf(stored, 1);
+      const [thread] = projection.providerThreads;
+      assert.equal(thread?.promptSuggestion?.text, "run the tests");
+      assert.equal(thread?.status, "idle");
+      assert.equal(thread?.lastRunOrdinal, 1);
+    }),
+  );
+
   it.effect("rolls back runs a provider rewound off its active branch", () =>
     Effect.gen(function* () {
       const now = yield* DateTime.now;

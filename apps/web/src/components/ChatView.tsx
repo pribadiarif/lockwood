@@ -3629,7 +3629,7 @@ export default function ChatView(props: ChatViewProps) {
         ? null
         : {
             text: activeProviderThreadSuggestion.text,
-            createdAtMs: DateTime.toEpochMillis(activeProviderThreadSuggestion.createdAt),
+            createdAtMs: Date.parse(activeProviderThreadSuggestion.createdAt),
           },
     latestRunRequestedAt: activeLatestRun?.requestedAt ?? null,
     latestRunSettled,

@@ -591,6 +591,28 @@ export const layer: Layer.Layer<
                   })),
                 ];
           }
+          case "provider_thread.prompt_suggested": {
+            const suggested = input.event;
+            // Patch the stored row: the adapter's cached copy can carry a stale status.
+            const context = yield* projections
+              .getThreadProviderContext(suggested.threadId, input.providerInstanceId)
+              .pipe(
+                Effect.catchTags({
+                  ProjectionStoreThreadNotFoundError: () => Effect.succeed(null),
+                }),
+              );
+            const current = context?.providerThreads.find(
+              (thread) => thread.id === suggested.providerThreadId,
+            );
+            if (current === undefined) return [];
+            return [
+              yield* makeDomainEvent(input, {
+                type: "provider-thread.updated",
+                threadId: suggested.threadId,
+                payload: { ...current, promptSuggestion: suggested.promptSuggestion },
+              }),
+            ];
+          }
           case "provider_turn.updated":
             return [
               ...(["completed", "interrupted", "failed", "cancelled"].includes(

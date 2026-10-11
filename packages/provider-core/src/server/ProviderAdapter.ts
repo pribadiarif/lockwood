@@ -13,6 +13,7 @@ import {
   OrchestrationV2ProviderCapabilities,
   OrchestrationV2ProviderFailure,
   OrchestrationV2ProviderRetry,
+  OrchestrationV2PromptSuggestion,
   OrchestrationV2ProviderThread,
   OrchestrationV2ProviderTurn,
   OrchestrationV2RuntimeRequest,
@@ -97,6 +98,18 @@ export const ProviderAdapterV2Event = Schema.Union([
      * earlier runs whose turns fell off it.
      */
     retainedNativeTurnIds: Schema.optional(Schema.Array(Schema.String)),
+  }),
+  Schema.Struct({
+    /**
+     * A settled turn's predicted next user prompt. It can arrive after the run
+     * stops ingesting, so the session event pump persists it directly onto the
+     * stored provider thread.
+     */
+    type: Schema.Literal("provider_thread.prompt_suggested"),
+    driver: ProviderDriverKind,
+    threadId: ThreadId,
+    providerThreadId: ProviderThreadId,
+    promptSuggestion: OrchestrationV2PromptSuggestion,
   }),
   Schema.Struct({
     type: Schema.Literal("provider_turn.updated"),

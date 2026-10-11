@@ -5260,15 +5260,23 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     composerSubmissionError !== null ||
     providerInputSubmissionError !== null ||
     hasImageAttachmentAttention;
-  const isComposerResting = shouldUseRestingComposerLayout({
+  const restingLayoutInput = {
     isExistingThread: routeKind === "server" && activeThreadId !== null,
     isMobileViewport,
     isScrollCollapsed: isComposerScrollCollapsed,
     hasExpandedChrome: composerHasExpandedChrome,
     hasMultilinePrompt,
     timelineOverflows,
+  };
+  const isComposerResting = shouldUseRestingComposerLayout({
+    ...restingLayoutInput,
     alwaysRest: true,
   });
+  // The timeline reserves the expanded composer's height only for a
+  // scroll-collapsed composer, which expands again on interaction. The minimal
+  // composer rests by default and grows only with its content, so reporting it
+  // would pad the timeline end and pull the view past a just-sent message.
+  const isComposerScrollRested = shouldUseRestingComposerLayout(restingLayoutInput);
   const expandedComposerImages = isComposerResting
     ? standaloneComposerImages.filter((image) => pendingSnapShotIdSet.has(image.id))
     : standaloneComposerImages;
@@ -5285,8 +5293,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     onRestingControlsVisibilityChange(composerControlsVisibleInStrip);
   }, [composerControlsVisibleInStrip, onRestingControlsVisibilityChange]);
   useLayoutEffect(() => {
-    onRestingChange(isComposerResting);
-  }, [isComposerResting, onRestingChange]);
+    onRestingChange(isComposerScrollRested);
+  }, [isComposerScrollRested, onRestingChange]);
   // The resting footer floats over the prompt row, so the row reserves its
   // measured width. Wide actions like the compact-before-send chip vary too much for a fixed inset.
   const [restingActionsElement, setRestingActionsElement] = useState<HTMLDivElement | null>(null);

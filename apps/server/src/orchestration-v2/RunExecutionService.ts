@@ -401,6 +401,9 @@ export function routeProviderEvent(
         },
       ];
     }
+    // Arrives after the run settles; the session event pump persists it.
+    case "provider_thread.prompt_suggested":
+      return [false, state];
     case "provider_thread.updated": {
       const belongs =
         state.ownedProviderThreadIds.has(event.providerThread.id) ||

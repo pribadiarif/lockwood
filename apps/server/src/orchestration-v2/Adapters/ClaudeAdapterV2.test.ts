@@ -13313,7 +13313,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     ),
   );
 
-  it.effect("stores Claude's prompt suggestion on the provider thread after a turn", () =>
+  it.effect("reports Claude's prompt suggestion for the provider thread after a turn", () =>
     Effect.gen(function* () {
       const harness = yield* makeWakeHarness;
       yield* harness.runtime.startTurn(
@@ -13345,12 +13345,24 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       );
       const suggestions = () =>
         harness.events.flatMap((event) =>
-          event.type === "provider_thread.updated" && event.providerThread.promptSuggestion != null
-            ? [event.providerThread.promptSuggestion.text]
+          event.type === "provider_thread.prompt_suggested"
+            ? [
+                {
+                  threadId: event.threadId,
+                  providerThreadId: event.providerThreadId,
+                  text: event.promptSuggestion.text,
+                },
+              ]
             : [],
         );
       yield* awaitUntil(() => suggestions().length > 0, "prompt suggestion event");
-      assert.deepEqual(suggestions(), ["now update the call sites"]);
+      assert.deepEqual(suggestions(), [
+        {
+          threadId: harness.threadId,
+          providerThreadId: harness.providerThread.id,
+          text: "now update the call sites",
+        },
+      ]);
     }).pipe(
       Effect.scoped,
       Effect.provide(

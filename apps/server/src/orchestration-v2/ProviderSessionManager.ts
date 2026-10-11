@@ -275,11 +275,12 @@ function sessionKey(providerSessionId: ProviderSessionId): string {
 }
 
 /**
- * Runtime requests with no provider turn belong to the live session itself.
- * Their node and transcript item are runless too, so they bypass the normal
- * per-run subscriber and are persisted by the session event pump.
+ * Events that belong to the live session rather than a run, so they bypass the
+ * normal per-run subscriber and are persisted by the session event pump:
+ * runtime requests with no provider turn (and their runless node and
+ * transcript item), and prompt suggestions, which arrive after a run settles.
  */
-function sessionScopedRuntimeRequestThreadId(
+function sessionScopedEventThreadId(
   event: ProviderAdapter.ProviderAdapterV2Event,
 ): ThreadId | undefined {
   switch (event.type) {
@@ -294,6 +295,8 @@ function sessionScopedRuntimeRequestThreadId(
         (event.turnItem.type === "approval_request" || event.turnItem.type === "user_input_request")
         ? event.turnItem.threadId
         : undefined;
+    case "provider_thread.prompt_suggested":
+      return event.threadId;
     default:
       return undefined;
   }
@@ -1920,7 +1923,7 @@ export const layerWithOptions = (
                   // (project trust, login, or session-switch hooks). Persist
                   // their runless request artifacts directly so the normal T3
                   // request UI can answer them and unblock session setup.
-                  const threadId = sessionScopedRuntimeRequestThreadId(event);
+                  const threadId = sessionScopedEventThreadId(event);
                   if (threadId !== undefined) {
                     yield* Effect.gen(function* () {
                       const current = (yield* Ref.get(sessions)).get(
