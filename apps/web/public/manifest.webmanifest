@@ -1,5 +1,7 @@
 {
   "id": "/",
+  "name": "Lockwood & Co.",
+  "short_name": "Lockwood",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

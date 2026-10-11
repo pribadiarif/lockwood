@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds the macOS desktop app from this checkout and replaces the installed
-# "T3 Code (Alpha)" in /Applications, then relaunches it.
+# "Lockwood & Co. (Alpha)" in /Applications, then relaunches it.
 #
 # Usage: vp run alpha
 #
@@ -8,8 +8,11 @@
 # when this command was started by an agent inside the Alpha app it replaces.
 set -euo pipefail
 
-APP_NAME="T3 Code (Alpha)"
+APP_NAME="Lockwood & Co. (Alpha)"
 APP_PATH="/Applications/${APP_NAME}.app"
+# The bundle's name before the rebrand; replaced on the first install.
+LEGACY_APP_NAME="T3 Code (Alpha)"
+LEGACY_APP_PATH="/Applications/${LEGACY_APP_NAME}.app"
 LOG_FILE="${HOME}/.t3/install-alpha.log"
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
@@ -18,29 +21,34 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
 fi
 
 app_running() {
-  [[ "$(osascript -e "application \"${APP_NAME}\" is running" 2>/dev/null)" == "true" ]]
+  [[ "$(osascript -e "application \"${1:-$APP_NAME}\" is running" 2>/dev/null)" == "true" ]]
+}
+
+quit_app() {
+  local name="$1"
+  # Asking about an app that is not installed makes AppleScript prompt for it.
+  [[ -d "/Applications/${name}.app" ]] || return 0
+  app_running "$name" || return 0
+  echo "quitting ${name}..."
+  osascript -e "tell application \"${name}\" to quit" >/dev/null 2>&1 || true
+  for _ in $(seq 1 60); do
+    app_running "$name" || return 0
+    sleep 1
+  done
+  echo "error: ${name} is still running; quit it and run 'vp run alpha' again" >&2
+  exit 1
 }
 
 if [[ "${1:-}" == "--install-phase" ]]; then
   dmg="$2"
   echo "[$(date '+%H:%M:%S')] installing ${dmg}"
 
-  if app_running; then
-    echo "quitting ${APP_NAME}..."
-    osascript -e "tell application \"${APP_NAME}\" to quit" >/dev/null 2>&1 || true
-    for _ in $(seq 1 60); do
-      app_running || break
-      sleep 1
-    done
-    if app_running; then
-      echo "error: ${APP_NAME} is still running; quit it and run 'vp run alpha' again" >&2
-      exit 1
-    fi
-  fi
+  quit_app "$APP_NAME"
+  quit_app "$LEGACY_APP_NAME"
 
   mount_point="$(hdiutil attach -nobrowse -readonly "$dmg" | awk -F'\t' '/\/Volumes\//{print $NF}')"
   trap 'hdiutil detach "$mount_point" -quiet || true' EXIT
-  rm -rf "$APP_PATH"
+  rm -rf "$APP_PATH" "$LEGACY_APP_PATH"
   ditto "${mount_point}/${APP_NAME}.app" "$APP_PATH"
   open "$APP_PATH"
   echo "[$(date '+%H:%M:%S')] done: ${APP_NAME} updated and relaunched"
