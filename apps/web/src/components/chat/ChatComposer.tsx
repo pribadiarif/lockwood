@@ -2437,7 +2437,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     [activeThreadModelSelection, modelOptionsByInstance],
   );
   const reserveContextWindowMeter = shouldReserveContextWindowMeter({
-    meterEnabled: settings.contextWindowMeterEnabled,
+    meterEnabled: true,
     detailLoading: props.threadSyncPhase === "loading",
     threadStarted: threadShellHasStarted(props.activeThreadShell),
     providerReportsContextWindow: selectedProviderStatus
@@ -7707,14 +7707,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   <ComposerFooterPrimaryActions
                     compact={isComposerResting || isComposerPrimaryActionsCompact}
                     canOperateThread={canOperateThread}
-                    activeContextWindow={
-                      settings.contextWindowMeterEnabled ? activeContextWindow : null
-                    }
-                    usageLimits={
-                      settings.contextWindowMeterEnabled
-                        ? (selectedProviderStatus?.usageLimits ?? null)
-                        : null
-                    }
+                    activeContextWindow={activeContextWindow}
+                    usageLimits={selectedProviderStatus?.usageLimits ?? null}
                     planLabel={formatPlanLabel(selectedProviderStatus?.auth.label)}
                     onOpenUsage={openUsagePage}
                     reserveContextWindowMeter={reserveContextWindowMeter}

@@ -4319,8 +4319,9 @@ export default function ChatView(props: ChatViewProps) {
     showEnvironmentIndicator: showComposerEnvironmentIndicator,
     hostsRestingComposerControls: routeKind === "server" && restingComposerControlsVisible,
   });
-  const mountComposerModelStrip =
-    routeKind === "server" && !mountComposerContextStrip && !showProviderSubagentBar;
+  // Drafts host the minimal composer's controls too; without this strip a
+  // project with no git or environment controls keeps them inside the input.
+  const mountComposerModelStrip = !mountComposerContextStrip && !showProviderSubagentBar;
   const showComposerModelStrip = mountComposerModelStrip && restingComposerControlsVisible;
   const terminalShortcutLabelOptions = useMemo(
     () => ({
