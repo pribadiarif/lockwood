@@ -101,6 +101,24 @@ describe("DesktopEnvironment", () => {
     }),
   );
 
+  it.effect("opens DevTools only when requested in development", () =>
+    Effect.gen(function* () {
+      const devServer = { VITE_DEV_SERVER_URL: "http://localhost:5173" };
+
+      const developmentDefault = yield* makeEnvironment({}, devServer);
+      assert.equal(developmentDefault.openDevTools, false);
+
+      const developmentOptIn = yield* makeEnvironment(
+        {},
+        { ...devServer, T3CODE_DESKTOP_OPEN_DEVTOOLS: "true" },
+      );
+      assert.equal(developmentOptIn.openDevTools, true);
+
+      const productionOptIn = yield* makeEnvironment({}, { T3CODE_DESKTOP_OPEN_DEVTOOLS: "true" });
+      assert.equal(productionOptIn.openDevTools, false);
+    }),
+  );
+
   it.effect("stores production state under userdata in an explicit home", () =>
     Effect.gen(function* () {
       const environment = yield* makeEnvironment(
