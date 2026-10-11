@@ -11571,11 +11571,10 @@ export default function ChatView(props: ChatViewProps) {
                       scrollToEnd(true);
                     }}
                     className="pointer-events-auto"
-                    size="xs"
+                    size="icon"
                     variant="glass"
                   >
-                    <ChevronDownIcon className="size-3.5" />
-                    Scroll to end
+                    <ChevronDownIcon className="size-4" />
                   </Button>
                 </div>
               )}
@@ -11589,7 +11588,10 @@ export default function ChatView(props: ChatViewProps) {
               className={
                 isDraftHeroState
                   ? "pointer-events-none absolute inset-0 z-20 flex items-center"
-                  : "pointer-events-none absolute inset-x-0 bottom-0 z-20 pt-1.5 sm:pt-2"
+                  : // The docked composer sits on a page-colored backdrop that fades in
+                    // above it, so timeline text never shows around the input or the
+                    // plain control row beneath it.
+                    "pointer-events-none absolute inset-x-0 bottom-0 z-20 pt-1.5 before:pointer-events-none before:absolute before:inset-x-0 before:-top-8 before:bottom-0 before:-z-1 before:bg-linear-to-b before:from-transparent before:to-background before:to-30% sm:pt-2"
               }
             >
               <div
