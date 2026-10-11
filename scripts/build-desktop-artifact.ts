@@ -2744,7 +2744,7 @@ export function resolvePackageManagerUserAgent(packageManager: string): string {
 export function resolveDesktopProductName(version: string): string {
   return resolveDesktopUpdateChannel(version) === "nightly"
     ? "Lockwood & Co. (Nightly)"
-    : (desktopPackageJson.productName ?? "Lockwood & Co.");
+    : (desktopPackageJson.productName ?? "Lockwood & Co");
 }
 
 export const createBuildConfig = Effect.fn("createBuildConfig")(function* (

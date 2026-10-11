@@ -272,7 +272,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
   });
 
   it("switches desktop packaging product names to nightly for nightly builds", () => {
-    assert.equal(resolveDesktopProductName("0.0.17"), "Lockwood & Co. (Alpha)");
+    assert.equal(resolveDesktopProductName("0.0.17"), "Lockwood & Co");
     assert.equal(
       resolveDesktopProductName("0.0.17-nightly.20260413.42"),
       "Lockwood & Co. (Nightly)",
@@ -685,7 +685,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         "**/*.map",
       ]);
       assert.deepStrictEqual(mac.dmg, {
-        title: "Lockwood & Co. (Alpha) 1.2.3 Installer",
+        title: "Lockwood & Co 1.2.3 Installer",
         background: "dmg/dmg-background-latest.png",
         window: { width: 640, height: 432 },
         contents: [

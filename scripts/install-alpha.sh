@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds the macOS desktop app from this checkout and replaces the installed
-# "Lockwood & Co." in /Applications, then relaunches it.
+# "Lockwood & Co" in /Applications, then relaunches it.
 #
 # Usage: vp run alpha
 #
@@ -8,7 +8,7 @@
 # when this command was started by an agent inside the Alpha app it replaces.
 set -euo pipefail
 
-APP_NAME="Lockwood & Co."
+APP_NAME="Lockwood & Co"
 APP_PATH="/Applications/${APP_NAME}.app"
 # Earlier names of the same bundle; replaced on the next install.
 LEGACY_APP_NAMES=("Lockwood & Co. (Alpha)" "T3 Code (Alpha)")
