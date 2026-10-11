@@ -787,37 +787,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
         onContextMenu={handleRowContextMenu}
       >
         <div className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
-          {subagentCount > 0 && (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <button
-                    type="button"
-                    aria-expanded={!subagentsCollapsed}
-                    aria-label={subagentToggleLabel}
-                    className="relative -mx-0.5 inline-flex size-3.5 shrink-0 cursor-pointer items-center justify-center rounded-sm text-sidebar-muted-foreground outline-hidden hover:text-sidebar-foreground focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
-                    onPointerDown={(event) => event.stopPropagation()}
-                    onDoubleClick={(event) => event.stopPropagation()}
-                    onClick={handleSubagentsToggle}
-                  />
-                }
-              >
-                <ChevronRightIcon
-                  className={cn("size-3 transition-transform", !subagentsCollapsed && "rotate-90")}
-                />
-                {subagentsCollapsed && collapsedSubagentStatus && (
-                  <span
-                    aria-hidden
-                    className={cn(
-                      "absolute -top-px -right-px size-1.5 rounded-full",
-                      collapsedSubagentStatus.dotClass,
-                    )}
-                  />
-                )}
-              </TooltipTrigger>
-              <TooltipPopup side="top">{subagentToggleLabel}</TooltipPopup>
-            </Tooltip>
-          )}
           {prStatus && pr && (
             <Tooltip>
               <TooltipTrigger
@@ -930,6 +899,37 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                 />
               </TooltipTrigger>
               <TooltipPopup side="top">{terminalStatus.label}</TooltipPopup>
+            </Tooltip>
+          )}
+          {subagentCount > 0 && (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    type="button"
+                    aria-expanded={!subagentsCollapsed}
+                    aria-label={subagentToggleLabel}
+                    className="relative inline-flex size-3.5 shrink-0 cursor-pointer items-center justify-center rounded-sm text-sidebar-muted-foreground outline-hidden hover:text-sidebar-foreground focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onDoubleClick={(event) => event.stopPropagation()}
+                    onClick={handleSubagentsToggle}
+                  />
+                }
+              >
+                <ChevronRightIcon
+                  className={cn("size-3 transition-transform", !subagentsCollapsed && "rotate-90")}
+                />
+                {subagentsCollapsed && collapsedSubagentStatus && (
+                  <span
+                    aria-hidden
+                    className={cn(
+                      "absolute -top-px -right-px size-1.5 rounded-full",
+                      collapsedSubagentStatus.dotClass,
+                    )}
+                  />
+                )}
+              </TooltipTrigger>
+              <TooltipPopup side="top">{subagentToggleLabel}</TooltipPopup>
             </Tooltip>
           )}
           <div
