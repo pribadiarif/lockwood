@@ -749,11 +749,19 @@ function SidebarMenuButton({
   );
 }
 
-function SidebarMenuSub({ className, ...props }: React.ComponentProps<"ul">) {
+function SidebarMenuSub({
+  className,
+  variant = "tree",
+  ...props
+}: React.ComponentProps<"ul"> & {
+  /** `tree` draws the nesting guide line; `flat` lists children without it. */
+  variant?: "tree" | "flat";
+}) {
   return (
     <ul
       className={cn(
-        "mx-3.5 flex min-w-0 translate-x-px flex-col gap-1 border-sidebar-border border-l px-2.5 py-0.5",
+        "mx-3.5 flex min-w-0 translate-x-px flex-col gap-1 py-0.5",
+        variant === "tree" ? "border-sidebar-border border-l px-2.5" : "px-0",
         "group-data-[collapsible=icon]:hidden",
         className,
       )}
