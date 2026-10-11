@@ -30,6 +30,7 @@ export interface PersistedUiState {
   sidebarProjectScopeKey?: string | null;
   threadChangedFilesExpansionVersion?: number;
   threadChangedFilesExpandedById?: Record<string, Record<string, boolean>>;
+  threadSubagentsCollapsedById?: Record<string, boolean>;
   pullRequestMergeMethod?: string;
 }
 
@@ -45,6 +46,9 @@ export interface UiProjectState {
 export interface UiThreadState {
   threadLastVisitedAtById: Record<string, string>;
   threadChangedFilesExpandedById: Record<string, Record<string, boolean>>;
+  // Parent thread keys whose subagent rows the legacy sidebar hides. Only
+  // collapsed parents are stored; expanded is the default.
+  threadSubagentsCollapsedById: Record<string, boolean>;
 }
 
 export interface UiEndpointState {
@@ -64,6 +68,7 @@ const initialState: UiState = {
   sidebarProjectScopeKey: null,
   threadLastVisitedAtById: {},
   threadChangedFilesExpandedById: {},
+  threadSubagentsCollapsedById: {},
   defaultAdvertisedEndpointKey: null,
   pullRequestMergeMethod: "merge",
 };
@@ -153,6 +158,11 @@ export function parsePersistedState(parsed: PersistedUiState): UiState {
       parsed.threadChangedFilesExpansionVersion === THREAD_CHANGED_FILES_EXPANSION_VERSION
         ? sanitizePersistedThreadChangedFilesExpanded(parsed.threadChangedFilesExpandedById)
         : {},
+    threadSubagentsCollapsedById: Object.fromEntries(
+      Object.entries(sanitizeBooleanRecord(parsed.threadSubagentsCollapsedById)).filter(
+        ([, collapsed]) => collapsed,
+      ),
+    ),
     defaultAdvertisedEndpointKey: sanitizeOptionalKey(parsed.defaultAdvertisedEndpointKey),
     sidebarProjectScopeKey: sanitizeOptionalKey(parsed.sidebarProjectScopeKey),
     pullRequestMergeMethod: isPullRequestMergeMethod(parsed.pullRequestMergeMethod)
@@ -231,6 +241,7 @@ export function persistState(state: UiState): void {
         sidebarProjectScopeKey: state.sidebarProjectScopeKey,
         threadChangedFilesExpansionVersion: THREAD_CHANGED_FILES_EXPANSION_VERSION,
         threadChangedFilesExpandedById: state.threadChangedFilesExpandedById,
+        threadSubagentsCollapsedById: state.threadSubagentsCollapsedById,
         pullRequestMergeMethod: state.pullRequestMergeMethod,
       } satisfies PersistedUiState),
     );
@@ -316,6 +327,20 @@ export function setThreadChangedFilesExpanded(
       },
     },
   };
+}
+
+export function setThreadSubagentsCollapsed(
+  state: UiState,
+  threadKey: string,
+  collapsed: boolean,
+): UiState {
+  if ((state.threadSubagentsCollapsedById[threadKey] === true) === collapsed) {
+    return state;
+  }
+  const threadSubagentsCollapsedById = { ...state.threadSubagentsCollapsedById };
+  if (collapsed) threadSubagentsCollapsedById[threadKey] = true;
+  else delete threadSubagentsCollapsedById[threadKey];
+  return { ...state, threadSubagentsCollapsedById };
 }
 
 export function setDefaultAdvertisedEndpointKey(state: UiState, key: string | null): UiState {
@@ -427,6 +452,7 @@ interface UiStateStore extends UiState {
   markThreadVisited: (threadId: string, visitedAt: string) => void;
   markThreadUnread: (threadId: string, latestTurnCompletedAt: string | null | undefined) => void;
   setThreadChangedFilesExpanded: (threadId: string, turnId: string, expanded: boolean) => void;
+  setThreadSubagentsCollapsed: (threadKey: string, collapsed: boolean) => void;
   setDefaultAdvertisedEndpointKey: (key: string | null) => void;
   setSidebarProjectScopeKey: (projectKey: string | null) => void;
   setPullRequestMergeMethod: (method: PullRequestMergeMethod) => void;
@@ -446,6 +472,8 @@ export const useUiStateStore = create<UiStateStore>((set) => ({
     set((state) => markThreadUnread(state, threadId, latestTurnCompletedAt)),
   setThreadChangedFilesExpanded: (threadId, turnId, expanded) =>
     set((state) => setThreadChangedFilesExpanded(state, threadId, turnId, expanded)),
+  setThreadSubagentsCollapsed: (threadKey, collapsed) =>
+    set((state) => setThreadSubagentsCollapsed(state, threadKey, collapsed)),
   setDefaultAdvertisedEndpointKey: (key) =>
     set((state) => setDefaultAdvertisedEndpointKey(state, key)),
   setSidebarProjectScopeKey: (projectKey) =>

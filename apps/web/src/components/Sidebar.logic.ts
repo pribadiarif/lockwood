@@ -582,6 +582,99 @@ export function filterSidebarV2VisibleThreads<
   );
 }
 
+export interface SidebarThreadTreeEntry<T> {
+  readonly thread: T;
+  readonly depth: number;
+  /** Direct subagent children listed under this thread. */
+  readonly childCount: number;
+}
+
+/**
+ * Orders an already-sorted thread list so each subagent thread follows its
+ * parent, one level deeper. A subagent whose parent is not in the list
+ * (archived, or in another project) stays at the root.
+ */
+export function buildSidebarThreadTree<
+  T extends Pick<SidebarThreadSummary, "id" | "lineage"> & { environmentId: string },
+>(threads: readonly T[]): SidebarThreadTreeEntry<T>[] {
+  const keyOf = (environmentId: string, threadId: string) => `${environmentId}:${threadId}`;
+  const present = new Set(threads.map((thread) => keyOf(thread.environmentId, thread.id)));
+  const childrenByParentKey = new Map<string, T[]>();
+  const roots: T[] = [];
+  for (const thread of threads) {
+    const parentId = thread.lineage.parentThreadId;
+    const parentKey =
+      isSidebarSubagentThread(thread) && parentId !== null
+        ? keyOf(thread.environmentId, parentId)
+        : null;
+    if (parentKey === null || !present.has(parentKey)) {
+      roots.push(thread);
+      continue;
+    }
+    const siblings = childrenByParentKey.get(parentKey);
+    if (siblings) siblings.push(thread);
+    else childrenByParentKey.set(parentKey, [thread]);
+  }
+
+  const entries: SidebarThreadTreeEntry<T>[] = [];
+  const visited = new Set<string>();
+  const visit = (thread: T, depth: number) => {
+    const key = keyOf(thread.environmentId, thread.id);
+    if (visited.has(key)) return;
+    visited.add(key);
+    const children = childrenByParentKey.get(key) ?? [];
+    entries.push({ thread, depth, childCount: children.length });
+    for (const child of children) visit(child, depth + 1);
+  };
+  for (const root of roots) visit(root, 0);
+  // A lineage cycle has no root to hang from; never drop those threads.
+  for (const thread of threads) visit(thread, 0);
+  return entries;
+}
+
+/** Drops the descendants of every thread whose subagent rows are collapsed. */
+export function hideCollapsedSidebarThreadDescendants<T>(
+  entries: readonly SidebarThreadTreeEntry<T>[],
+  isCollapsed: (thread: T) => boolean,
+): SidebarThreadTreeEntry<T>[] {
+  const shown: SidebarThreadTreeEntry<T>[] = [];
+  let collapsedDepth: number | null = null;
+  for (const entry of entries) {
+    if (collapsedDepth !== null && entry.depth > collapsedDepth) continue;
+    collapsedDepth = entry.childCount > 0 && isCollapsed(entry.thread) ? entry.depth : null;
+    shown.push(entry);
+  }
+  return shown;
+}
+
+/** Threads nested anywhere under `entries[index]`: the rows its chevron hides. */
+export function getSidebarThreadTreeDescendants<T>(
+  entries: readonly SidebarThreadTreeEntry<T>[],
+  index: number,
+): T[] {
+  const parent = entries[index];
+  const descendants: T[] = [];
+  if (!parent) return descendants;
+  for (let i = index + 1; i < entries.length && entries[i]!.depth > parent.depth; i++) {
+    descendants.push(entries[i]!.thread);
+  }
+  return descendants;
+}
+
+/** Keeps the first `rootLimit` root rows together with all their descendants. */
+export function limitSidebarThreadTreeRoots<T>(
+  entries: readonly SidebarThreadTreeEntry<T>[],
+  rootLimit: number,
+): SidebarThreadTreeEntry<T>[] {
+  let roots = 0;
+  const limited: SidebarThreadTreeEntry<T>[] = [];
+  for (const entry of entries) {
+    if (entry.depth === 0 && ++roots > rootLimit) break;
+    limited.push(entry);
+  }
+  return limited;
+}
+
 export function getSidebarForkParentThreadId(
   thread: Pick<SidebarThreadSummary, "forkedFrom" | "lineage">,
 ) {

@@ -4,6 +4,7 @@ import { Spinner } from "~/components/ui/spinner";
 import {
   ArchiveIcon,
   ArrowUpDownIcon,
+  ChevronRightIcon,
   FolderPlusIcon,
   Globe2Icon,
   PlusIcon,
@@ -186,8 +187,12 @@ import { isCommandPaletteOpen, openCommandPalette } from "../commandPaletteBus";
 import {
   archiveSelectedThreadEntries,
   buildMultiSelectThreadContextMenuItems,
+  buildSidebarThreadTree,
   deleteSelectedThreadEntries,
   getSidebarThreadIdsToPrewarm,
+  getSidebarThreadTreeDescendants,
+  hideCollapsedSidebarThreadDescendants,
+  limitSidebarThreadTreeRoots,
   resolveAdjacentThreadId,
   isContextMenuPointerDown,
   isSidebarNestedLinkClick,
@@ -201,6 +206,7 @@ import {
   sortProjectsForSidebar,
   useSidebarRowSubscriptionLease,
   useThreadJumpHintVisibility,
+  type SidebarThreadTreeEntry,
   ThreadStatusPill,
 } from "./Sidebar.logic";
 import { sortThreads } from "../lib/threadSort";
@@ -322,6 +328,12 @@ function buildThreadJumpLabelMap(input: {
 
 interface SidebarThreadRowProps {
   thread: SidebarThreadSummary;
+  /** Subagent nesting level under the parent thread row; 0 for top-level threads. */
+  depth: number;
+  /** Subagent threads nested directly under this row; > 0 shows a collapse chevron. */
+  subagentCount: number;
+  /** Most urgent status among the subagent rows hidden by a collapsed chevron. */
+  collapsedSubagentStatus: ThreadStatusPill | null;
   orderedProjectThreadKeys: readonly string[];
   isActive: boolean;
   openPullRequestsInRightPanel: boolean;
@@ -402,6 +414,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     openPrLink,
     onFileDropThreads,
     thread,
+    depth,
+    subagentCount,
+    collapsedSubagentStatus,
   } = props;
   const canOperateThread = useEnvironmentScope(thread.environmentId, AuthOrchestrationOperateScope);
   const canOperatePreview = useEnvironmentScope(thread.environmentId, AuthPreviewOperateScope);
@@ -427,6 +442,20 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   }, [isFileDragOver]);
   const { leaseLiveStatus, rowRef } = useSidebarRowSubscriptionLease(isActive);
   const localLastVisitedAt = useUiStateStore((state) => state.threadLastVisitedAtById[threadKey]);
+  const subagentsCollapsed = useUiStateStore(
+    (state) => state.threadSubagentsCollapsedById[threadKey] === true,
+  );
+  const subagentToggleLabel = `${subagentsCollapsed ? "Show" : "Hide"} ${subagentCount} subagent ${
+    subagentCount === 1 ? "thread" : "threads"
+  }${subagentsCollapsed && collapsedSubagentStatus ? ` (${collapsedSubagentStatus.label})` : ""}`;
+  const handleSubagentsToggle = useCallback(
+    (event: React.MouseEvent<HTMLButtonElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+      useUiStateStore.getState().setThreadSubagentsCollapsed(threadKey, !subagentsCollapsed);
+    },
+    [subagentsCollapsed, threadKey],
+  );
   const lastVisitedAt = resolveThreadLastVisitedAt(thread.lastVisitedAt, localLastVisitedAt);
   const isSelected = useThreadSelectionStore((state) => state.selectedThreadKeys.has(threadKey));
   const runningTerminalIds = useThreadRunningTerminalIds({
@@ -751,12 +780,44 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               : "text-sidebar-muted-foreground/80 hover:bg-sidebar-row-hover hover:text-sidebar-foreground",
           isFileDragOver && "ring-1 ring-inset ring-primary/70",
         )}
+        style={depth > 0 ? { paddingInlineStart: `${0.5 + depth}rem` } : undefined}
         onClick={handleRowClick}
         onDoubleClick={handleRowDoubleClick}
         onKeyDown={handleRowKeyDown}
         onContextMenu={handleRowContextMenu}
       >
         <div className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
+          {subagentCount > 0 && (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    type="button"
+                    aria-expanded={!subagentsCollapsed}
+                    aria-label={subagentToggleLabel}
+                    className="relative -mx-0.5 inline-flex size-3.5 shrink-0 cursor-pointer items-center justify-center rounded-sm text-sidebar-muted-foreground outline-hidden hover:text-sidebar-foreground focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onDoubleClick={(event) => event.stopPropagation()}
+                    onClick={handleSubagentsToggle}
+                  />
+                }
+              >
+                <ChevronRightIcon
+                  className={cn("size-3 transition-transform", !subagentsCollapsed && "rotate-90")}
+                />
+                {subagentsCollapsed && collapsedSubagentStatus && (
+                  <span
+                    aria-hidden
+                    className={cn(
+                      "absolute -top-px -right-px size-1.5 rounded-full",
+                      collapsedSubagentStatus.dotClass,
+                    )}
+                  />
+                )}
+              </TooltipTrigger>
+              <TooltipPopup side="top">{subagentToggleLabel}</TooltipPopup>
+            </Tooltip>
+          )}
           {prStatus && pr && (
             <Tooltip>
               <TooltipTrigger
@@ -976,8 +1037,9 @@ interface SidebarProjectThreadListProps {
   projectExpanded: boolean;
   hasOverflowingThreads: boolean;
   hiddenThreadStatus: ThreadStatusPill | null;
+  collapsedSubagentStatusByKey: ReadonlyMap<string, ThreadStatusPill>;
   orderedProjectThreadKeys: readonly string[];
-  renderedThreads: readonly SidebarThreadSummary[];
+  renderedThreads: readonly SidebarThreadTreeEntry<SidebarThreadSummary>[];
   showEmptyThreadState: boolean;
   shouldShowThreadPanel: boolean;
   isThreadListExpanded: boolean;
@@ -1032,6 +1094,7 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
     projectExpanded,
     hasOverflowingThreads,
     hiddenThreadStatus,
+    collapsedSubagentStatusByKey,
     orderedProjectThreadKeys,
     renderedThreads,
     showEmptyThreadState,
@@ -1084,12 +1147,15 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
         </SidebarMenuSubItem>
       ) : null}
       {shouldShowThreadPanel &&
-        renderedThreads.map((thread) => {
+        renderedThreads.map(({ thread, depth, childCount }) => {
           const threadKey = scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
           return (
             <SidebarThreadRow
               key={threadKey}
               thread={thread}
+              depth={depth}
+              subagentCount={childCount}
+              collapsedSubagentStatus={collapsedSubagentStatusByKey.get(threadKey) ?? null}
               orderedProjectThreadKeys={orderedProjectThreadKeys}
               isActive={activeRouteThreadKey === threadKey}
               openPullRequestsInRightPanel={openPullRequestsInRightPanel}
@@ -1294,6 +1360,9 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
   const projectExpanded = useUiStateStore((state) =>
     resolveProjectExpanded(state.projectExpandedById, projectPreferenceKeys),
   );
+  const threadSubagentsCollapsedById = useUiStateStore(
+    (state) => state.threadSubagentsCollapsedById,
+  );
   const threadLastVisitedAts = useUiStateStore(
     useShallow((state) =>
       projectThreads.map(
@@ -1349,18 +1418,30 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     return counts;
   }, [memberProjectByScopedKey, project.memberProjects, projectThreads]);
 
-  const { visibleProjectThreads, orderedProjectThreadKeys } = useMemo(() => {
+  const { visibleProjectThreads, visibleThreadTree } = useMemo(() => {
     const visibleProjectThreads = sortThreads(
       projectThreads.filter((thread) => thread.archivedAt === null),
       threadSortOrder,
     );
     return {
-      orderedProjectThreadKeys: visibleProjectThreads.map((thread) =>
-        scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
-      ),
       visibleProjectThreads,
+      visibleThreadTree: buildSidebarThreadTree(visibleProjectThreads),
     };
   }, [projectThreads, threadSortOrder]);
+  const isSubagentsCollapsed = useCallback(
+    (thread: SidebarThreadSummary) =>
+      threadSubagentsCollapsedById[
+        scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id))
+      ] === true,
+    [threadSubagentsCollapsedById],
+  );
+  const orderedProjectThreadKeys = useMemo(
+    () =>
+      hideCollapsedSidebarThreadDescendants(visibleThreadTree, isSubagentsCollapsed).map(
+        ({ thread }) => scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
+      ),
+    [isSubagentsCollapsed, visibleThreadTree],
+  );
   const pinnedCollapsedThread = useMemo(() => {
     const activeThreadKey = activeRouteThreadKey ?? undefined;
     if (!activeThreadKey || projectExpanded) {
@@ -1378,6 +1459,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     hasOverflowingThreads,
     hiddenThreadStatus,
     renderedThreads,
+    collapsedSubagentStatusByKey,
     showEmptyThreadState,
     shouldShowThreadPanel,
   } = useMemo(() => {
@@ -1398,35 +1480,46 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         },
       });
     };
-    const hasOverflowingThreads = visibleProjectThreads.length > sidebarThreadPreviewCount;
+    const rootThreadCount = visibleThreadTree.filter((entry) => entry.depth === 0).length;
+    const hasOverflowingThreads = rootThreadCount > sidebarThreadPreviewCount;
     const previewThreads =
       isThreadListExpanded || !hasOverflowingThreads
-        ? visibleProjectThreads
-        : visibleProjectThreads.slice(0, sidebarThreadPreviewCount);
-    const visibleThreadKeys = new Set(
-      [...previewThreads, ...(pinnedCollapsedThread ? [pinnedCollapsedThread] : [])].map((thread) =>
-        scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
-      ),
-    );
+        ? visibleThreadTree
+        : limitSidebarThreadTreeRoots(visibleThreadTree, sidebarThreadPreviewCount);
     const renderedThreads = pinnedCollapsedThread
-      ? [pinnedCollapsedThread]
-      : visibleProjectThreads.filter((thread) =>
-          visibleThreadKeys.has(scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id))),
+      ? [{ thread: pinnedCollapsedThread, depth: 0, childCount: 0 }]
+      : hideCollapsedSidebarThreadDescendants(previewThreads, isSubagentsCollapsed);
+    // Rows past the preview limit; collapsed subagents are not "more" to show.
+    const hiddenThreads = visibleThreadTree
+      .slice(previewThreads.length)
+      .map((entry) => entry.thread);
+    // A collapsed parent surfaces the most urgent status among the subagent
+    // rows it hides, so an approval request never disappears with them.
+    const collapsedSubagentStatusByKey = new Map<string, ThreadStatusPill>();
+    visibleThreadTree.forEach((entry, index) => {
+      if (entry.childCount === 0 || !isSubagentsCollapsed(entry.thread)) return;
+      const status = resolveProjectStatusIndicator(
+        getSidebarThreadTreeDescendants(visibleThreadTree, index).map(resolveProjectThreadStatus),
+      );
+      if (status) {
+        collapsedSubagentStatusByKey.set(
+          scopedThreadKey(scopeThreadRef(entry.thread.environmentId, entry.thread.id)),
+          status,
         );
-    const hiddenThreads = visibleProjectThreads.filter(
-      (thread) =>
-        !visibleThreadKeys.has(scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id))),
-    );
+      }
+    });
     return {
       hasOverflowingThreads,
       hiddenThreadStatus: resolveProjectStatusIndicator(
         hiddenThreads.map((thread) => resolveProjectThreadStatus(thread)),
       ),
       renderedThreads,
+      collapsedSubagentStatusByKey,
       showEmptyThreadState: projectExpanded && visibleProjectThreads.length === 0,
       shouldShowThreadPanel: projectExpanded || pinnedCollapsedThread !== null,
     };
   }, [
+    isSubagentsCollapsed,
     isThreadListExpanded,
     pinnedCollapsedThread,
     projectExpanded,
@@ -1434,6 +1527,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     sidebarThreadPreviewCount,
     threadLastVisitedAts,
     visibleProjectThreads,
+    visibleThreadTree,
   ]);
 
   const handleProjectButtonClick = useCallback(
@@ -2520,6 +2614,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         projectExpanded={projectExpanded}
         hasOverflowingThreads={hasOverflowingThreads}
         hiddenThreadStatus={hiddenThreadStatus}
+        collapsedSubagentStatusByKey={collapsedSubagentStatusByKey}
         orderedProjectThreadKeys={orderedProjectThreadKeys}
         renderedThreads={renderedThreads}
         showEmptyThreadState={showEmptyThreadState}
@@ -3190,6 +3285,9 @@ export default function LegacySidebar() {
   const projects = useProjects();
   const sidebarThreads = useThreadShells();
   const projectExpandedById = useUiStateStore((store) => store.projectExpandedById);
+  const threadSubagentsCollapsedById = useUiStateStore(
+    (store) => store.threadSubagentsCollapsedById,
+  );
   const projectOrder = useUiStateStore((store) => store.projectOrder);
   const reorderProjects = useUiStateStore((store) => store.reorderProjects);
   const navigate = useNavigate();
@@ -3533,12 +3631,21 @@ export default function LegacySidebar() {
           return [];
         }
         const isThreadListExpanded = expandedThreadListsByProject.has(project.projectKey);
-        const hasOverflowingThreads = projectThreads.length > sidebarThreadPreviewCount;
+        const threadTree = buildSidebarThreadTree(projectThreads);
+        const rootThreadCount = threadTree.filter((entry) => entry.depth === 0).length;
         const previewThreads =
-          isThreadListExpanded || !hasOverflowingThreads
-            ? projectThreads
-            : projectThreads.slice(0, sidebarThreadPreviewCount);
-        const renderedThreads = pinnedCollapsedThread ? [pinnedCollapsedThread] : previewThreads;
+          isThreadListExpanded || rootThreadCount <= sidebarThreadPreviewCount
+            ? threadTree
+            : limitSidebarThreadTreeRoots(threadTree, sidebarThreadPreviewCount);
+        const renderedThreads = pinnedCollapsedThread
+          ? [pinnedCollapsedThread]
+          : hideCollapsedSidebarThreadDescendants(
+              previewThreads,
+              (thread) =>
+                threadSubagentsCollapsedById[
+                  scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id))
+                ] === true,
+            ).map((entry) => entry.thread);
         return renderedThreads.map((thread) =>
           scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
         );
@@ -3548,6 +3655,7 @@ export default function LegacySidebar() {
       sidebarThreadPreviewCount,
       expandedThreadListsByProject,
       projectExpandedById,
+      threadSubagentsCollapsedById,
       routeThreadKey,
       sortedProjects,
       threadsByProjectKey,

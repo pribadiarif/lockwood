@@ -14,12 +14,16 @@ import {
   createThreadJumpHintVisibilityController,
   deleteSelectedThreadEntries,
   filterSidebarProjectScopeItems,
+  buildSidebarThreadTree,
   filterSidebarV2VisibleThreads,
+  limitSidebarThreadTreeRoots,
   formatWorkingDurationLabel,
   getFallbackThreadIdAfterDelete,
   getProjectSortTimestamp,
   getSidebarForkParentThreadId,
   getSidebarThreadIdsToPrewarm,
+  getSidebarThreadTreeDescendants,
+  hideCollapsedSidebarThreadDescendants,
   hasUnseenCompletion,
   isContextMenuPointerDown,
   isSidebarSubagentThread,
@@ -459,6 +463,65 @@ describe("sidebar thread lineage helpers", () => {
 
     expect(isSidebarSubagentThread(subagent)).toBe(true);
     expect(isSidebarSubagentThread(makeThreadFixture())).toBe(false);
+  });
+
+  it("nests subagent threads under their parent in sorted order", () => {
+    const subagentOf = (id: string, parentId: ThreadId) =>
+      makeThreadFixture({
+        id: ThreadId.make(id),
+        lineage: {
+          rootThreadId: parentId,
+          parentThreadId: parentId,
+          relationshipToParent: "subagent",
+        },
+      });
+    const parent = makeThreadFixture({ id: ThreadId.make("parent") });
+    const other = makeThreadFixture({ id: ThreadId.make("other") });
+    const childA = subagentOf("child-a", parent.id);
+    const childB = subagentOf("child-b", parent.id);
+    const grandchild = subagentOf("grandchild", childA.id);
+    const orphan = subagentOf("orphan", ThreadId.make("archived-parent"));
+
+    const tree = buildSidebarThreadTree([childB, other, grandchild, parent, orphan, childA]);
+    expect(tree.map((entry) => [entry.thread.id, entry.depth])).toEqual([
+      ["other", 0],
+      ["parent", 0],
+      ["child-b", 1],
+      ["child-a", 1],
+      ["grandchild", 2],
+      ["orphan", 0],
+    ]);
+
+    expect(tree.map((entry) => entry.childCount)).toEqual([0, 2, 0, 1, 0, 0]);
+    expect(
+      hideCollapsedSidebarThreadDescendants(tree, (thread) => thread.id === "parent").map(
+        (entry) => entry.thread.id,
+      ),
+    ).toEqual(["other", "parent", "orphan"]);
+    expect(
+      hideCollapsedSidebarThreadDescendants(tree, (thread) => thread.id === "child-a").map(
+        (entry) => entry.thread.id,
+      ),
+    ).toEqual(["other", "parent", "child-b", "child-a", "orphan"]);
+
+    expect(getSidebarThreadTreeDescendants(tree, 1).map((thread) => thread.id)).toEqual([
+      "child-b",
+      "child-a",
+      "grandchild",
+    ]);
+    expect(getSidebarThreadTreeDescendants(tree, 3).map((thread) => thread.id)).toEqual([
+      "grandchild",
+    ]);
+    expect(getSidebarThreadTreeDescendants(tree, 0)).toEqual([]);
+
+    // The preview limit counts root rows; a shown parent keeps all its children.
+    expect(limitSidebarThreadTreeRoots(tree, 2).map((entry) => entry.thread.id)).toEqual([
+      "other",
+      "parent",
+      "child-b",
+      "child-a",
+      "grandchild",
+    ]);
   });
 
   it("resolves the parent thread for fork sidebar affordances", () => {

@@ -15,6 +15,7 @@ import {
   setProjectExpanded,
   setSidebarProjectScopeKey,
   setThreadChangedFilesExpanded,
+  setThreadSubagentsCollapsed,
   type UiState,
 } from "./uiStateStore";
 
@@ -25,6 +26,7 @@ function makeUiState(overrides: Partial<UiState> = {}): UiState {
     sidebarProjectScopeKey: null,
     threadLastVisitedAtById: {},
     threadChangedFilesExpandedById: {},
+    threadSubagentsCollapsedById: {},
     defaultAdvertisedEndpointKey: null,
     pullRequestMergeMethod: "merge",
     ...overrides,
@@ -119,6 +121,16 @@ describe("uiStateStore pure functions", () => {
     );
   });
 
+  it("stores only collapsed subagent parents", () => {
+    const collapsed = setThreadSubagentsCollapsed(makeUiState(), "environment:thread-1", true);
+    expect(collapsed.threadSubagentsCollapsedById).toEqual({ "environment:thread-1": true });
+    expect(setThreadSubagentsCollapsed(collapsed, "environment:thread-1", true)).toBe(collapsed);
+    expect(
+      setThreadSubagentsCollapsed(collapsed, "environment:thread-1", false)
+        .threadSubagentsCollapsedById,
+    ).toEqual({});
+  });
+
   it("stores explicit changed-file expansion choices", () => {
     const threadId = ThreadId.make("thread-1");
     const collapsed = setThreadChangedFilesExpanded(makeUiState(), threadId, "turn-1", false);
@@ -209,6 +221,7 @@ describe("parsePersistedState", () => {
           "turn-2": true,
         },
       },
+      threadSubagentsCollapsedById: {},
     });
   });
 
@@ -306,6 +319,9 @@ describe("uiStateStore persistence", () => {
           "turn-2": true,
         },
       },
+      threadSubagentsCollapsedById: {
+        "environment:thread-2": true,
+      },
       defaultAdvertisedEndpointKey: "desktop-core:lan:http",
     });
 
@@ -330,6 +346,9 @@ describe("uiStateStore persistence", () => {
           "turn-1": false,
           "turn-2": true,
         },
+      },
+      threadSubagentsCollapsedById: {
+        "environment:thread-2": true,
       },
       pullRequestMergeMethod: "merge",
     });
