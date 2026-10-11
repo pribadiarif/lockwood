@@ -954,6 +954,12 @@ export const OrchestrationV2ProviderGoal = Schema.Struct({
 });
 export type OrchestrationV2ProviderGoal = typeof OrchestrationV2ProviderGoal.Type;
 
+export const OrchestrationV2PromptSuggestion = Schema.Struct({
+  text: Schema.String.check(Schema.isMaxLength(2000)),
+  createdAt: Schema.DateTimeUtc,
+});
+export type OrchestrationV2PromptSuggestion = typeof OrchestrationV2PromptSuggestion.Type;
+
 export const OrchestrationV2ProviderThread = Schema.Struct({
   id: ProviderThreadId,
   driver: ProviderDriverKind,
@@ -986,6 +992,14 @@ export const OrchestrationV2ProviderThread = Schema.Struct({
   ),
   /** Native goal on this provider thread; rows written before goals decode to null. */
   goal: Schema.optional(Schema.NullOr(OrchestrationV2ProviderGoal)).pipe(
+    Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
+  /**
+   * The provider's guess at the user's next prompt, reported after a turn
+   * settles (Claude's prompt suggestions). Clients offer it only while no newer
+   * turn exists; `createdAt` orders it against turns.
+   */
+  promptSuggestion: Schema.optional(Schema.NullOr(OrchestrationV2PromptSuggestion)).pipe(
     Schema.withDecodingDefault(Effect.succeed(null)),
   ),
   createdAt: Schema.DateTimeUtc,

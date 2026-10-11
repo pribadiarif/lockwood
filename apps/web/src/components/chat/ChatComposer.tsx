@@ -248,7 +248,12 @@ import { THREAD_CONTEXT_DROP_EVENT, threadContextDropTargetProps } from "./threa
 import { readThreadShell, useThreadShells } from "~/state/entities";
 import { requestConfirmDialog } from "~/confirmDialog";
 import { encodeComposerContextFragment } from "@t3tools/shared/composerContextClipboard";
-import type { ComposerContextClipboardFragment, ComposerContextRecord } from "@t3tools/contracts";
+import type {
+  ComposerContextClipboardFragment,
+  ComposerContextRecord,
+  ServerProviderUsageLimits,
+} from "@t3tools/contracts";
+import { useNavigate } from "@tanstack/react-router";
 import { resolveAssetUrl } from "~/assets/assetUrls";
 import { assetEnvironment } from "~/state/assets";
 import { readPreparedConnection } from "~/state/session";
@@ -298,6 +303,7 @@ import {
 } from "./composerProviderState";
 import { ContextWindowMeter, ContextWindowMeterPlaceholder } from "./ContextWindowMeter";
 import {
+  formatPlanLabel,
   providerSupportsManualCompaction,
   resolveContextWindowModelDisplayName,
   shouldReserveContextWindowMeter,
@@ -1353,10 +1359,19 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
   );
 });
 
+// Claude-style text controls: effort and access read as plain labels, while the
+// model keeps its colored provider logo. Icons stay wherever a control is
+// icon-only (narrow layouts, overflow menu).
+const PLAIN_COMPOSER_CONTROLS_CLASS_NAME =
+  "[&_[data-orientation=vertical]]:hidden [&_[data-composer-block-icon-only=false]_svg]:hidden [&_[data-composer-control-chevron]]:hidden";
+
 const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(props: {
   compact: boolean;
   canOperateThread: boolean;
   activeContextWindow: ContextWindowSnapshot | null;
+  usageLimits: ServerProviderUsageLimits | null;
+  planLabel: string | null;
+  onOpenUsage: () => void;
   reserveContextWindowMeter: boolean;
   activeThreadModelDisplayName: string | null;
   isPreparingWorktree: boolean;
@@ -1395,9 +1410,12 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
 }) {
   return (
     <>
-      {props.activeContextWindow ? (
+      {props.activeContextWindow || (props.usageLimits?.windows.length ?? 0) > 0 ? (
         <ContextWindowMeter
           usage={props.activeContextWindow}
+          usageLimits={props.usageLimits}
+          planLabel={props.planLabel}
+          onOpenUsage={props.onOpenUsage}
           modelDisplayName={props.activeThreadModelDisplayName}
           onCompact={props.onCompactContext}
           compactDisabled={props.compactDisabled}
@@ -1555,6 +1573,8 @@ export interface ChatComposerProps {
   bannerItems: readonly ComposerBannerStackItem[];
   /** Tokens a stale session would re-read; null when the thread is not offered compaction. */
   resumeCompactionTokens: number | null;
+  /** Provider-suggested next prompt; the empty composer shows it and Tab accepts it. */
+  promptSuggestion: string | null;
   /** The Compact chip is off, so the next send keeps full history. */
   keepFullHistory: boolean;
   /** Flips the Compact chip for the active thread. */
@@ -2227,6 +2247,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     () => selectedProviderEntry?.snapshot ?? null,
     [selectedProviderEntry],
   );
+  const navigate = useNavigate();
+  const openUsagePage = useCallback(() => {
+    void navigate({ to: "/usage" });
+  }, [navigate]);
   const compactCommandAvailable = providerSupportsManualCompaction(selectedProviderEntry);
   // Memoized so the composer menu memo below can cache between renders.
   const selectedProviderSkills = useMemo(
@@ -4515,6 +4539,18 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         return true;
       }
     }
+    if (
+      key === "Tab" &&
+      !event.shiftKey &&
+      !event.isComposing &&
+      props.promptSuggestion !== null &&
+      promptRef.current.trim().length === 0
+    ) {
+      const length = promptRef.current.length;
+      return applyPromptReplacement(0, length, props.promptSuggestion, {
+        expandedCursorAfterReplace: props.promptSuggestion.length,
+      });
+    }
     if ((key === "ArrowUp" || key === "ArrowDown") && submissionIntent === null) {
       return navigatePromptHistory(key === "ArrowUp" ? "backward" : "forward", event);
     }
@@ -5231,6 +5267,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     hasExpandedChrome: composerHasExpandedChrome,
     hasMultilinePrompt,
     timelineOverflows,
+    alwaysRest: true,
   });
   const expandedComposerImages = isComposerResting
     ? standaloneComposerImages.filter((image) => pendingSnapShotIdSet.has(image.id))
@@ -5595,14 +5632,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             ? "color-mix(in srgb, var(--chat-composer-glass-surface) var(--glass-opacity), transparent)"
             : "var(--contrast-input)"
         }
-        {...(composerProviderState.modelPickerIconClassName || composerControlsCollapsed
-          ? {
-              activeProviderIconClassName: cn(
-                composerProviderState.modelPickerIconClassName,
-                composerControlsCollapsed &&
-                  "fill-muted-foreground/70! text-muted-foreground/70! [&_path]:fill-muted-foreground/70! [&_rect]:fill-muted-foreground/70! [&_[data-icon-detail]]:fill-transparent!",
-              ),
-            }
+        {...(composerProviderState.modelPickerIconClassName
+          ? { activeProviderIconClassName: composerProviderState.modelPickerIconClassName }
           : {})}
         onOpenChange={setIsComposerModelPickerOpen}
         getModelDisabledReason={getModelDisabledReason}
@@ -6744,6 +6775,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               inert={restingControlsVisible ? undefined : true}
               className={cn(
                 "relative flex w-max min-w-0 max-w-full items-center gap-1 font-normal text-muted-foreground/70 [&_button]:text-xs!",
+                PLAIN_COMPOSER_CONTROLS_CLASS_NAME,
                 !restingControlsVisible && "invisible",
               )}
             >
@@ -7538,7 +7570,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                                 ? "Enable a provider in Settings to send a message"
                                 : phase === "disconnected"
                                   ? DISCONNECTED_COMPOSER_PLACEHOLDER
-                                  : "Ask anything, @tag files/folders, $use skills, or / for commands"
+                                  : (props.promptSuggestion ??
+                                    "Ask anything, @tag files/folders, $use skills, or / for commands")
                     }
                     disabled={
                       isConnecting ||
@@ -7609,6 +7642,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   data-chat-composer-footer-controls="true"
                   className={cn(
                     "relative -m-1 -ms-3.5 flex min-w-0 flex-1 items-center gap-1 overflow-x-auto p-1 ps-3.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+                    PLAIN_COMPOSER_CONTROLS_CLASS_NAME,
                     isComposerResting && "hidden",
                   )}
                 >
@@ -7668,6 +7702,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     activeContextWindow={
                       settings.contextWindowMeterEnabled ? activeContextWindow : null
                     }
+                    usageLimits={
+                      settings.contextWindowMeterEnabled
+                        ? (selectedProviderStatus?.usageLimits ?? null)
+                        : null
+                    }
+                    planLabel={formatPlanLabel(selectedProviderStatus?.auth.label)}
+                    onOpenUsage={openUsagePage}
                     reserveContextWindowMeter={reserveContextWindowMeter}
                     activeThreadModelDisplayName={activeThreadModelDisplayName}
                     pendingAction={pendingPrimaryAction}
@@ -7732,6 +7773,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     inert={restingControlsVisible ? undefined : true}
                     className={cn(
                       "relative flex w-max min-w-0 max-w-full items-center gap-1 text-muted-foreground/70 [&_button]:text-xs!",
+                      PLAIN_COMPOSER_CONTROLS_CLASS_NAME,
                       !restingControlsVisible && "invisible",
                     )}
                   >

@@ -192,6 +192,28 @@ describe("shouldUseRestingComposerLayout", () => {
   );
 });
 
+describe("shouldUseRestingComposerLayout with alwaysRest", () => {
+  const idle = {
+    isExistingThread: false,
+    isMobileViewport: false,
+    isScrollCollapsed: false,
+    hasExpandedChrome: false,
+    hasMultilinePrompt: false,
+    timelineOverflows: false,
+    alwaysRest: true,
+  };
+
+  it("rests single-line prompts without a scroll, on new threads too", () => {
+    expect(shouldUseRestingComposerLayout(idle)).toBe(true);
+  });
+
+  it("expands for multiline prompts, composer chrome, and mobile", () => {
+    expect(shouldUseRestingComposerLayout({ ...idle, hasMultilinePrompt: true })).toBe(false);
+    expect(shouldUseRestingComposerLayout({ ...idle, hasExpandedChrome: true })).toBe(false);
+    expect(shouldUseRestingComposerLayout({ ...idle, isMobileViewport: true })).toBe(false);
+  });
+});
+
 describe("shouldAnimateComposerRestingTransition", () => {
   it("does not animate layout measurements that settle during initial mount", () => {
     expect(

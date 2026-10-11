@@ -2,7 +2,13 @@ import { ProviderDriverKind, ProviderInstanceId, type ServerProvider } from "@t3
 import { describe, expect, it } from "vite-plus/test";
 import { deriveProviderInstanceEntries } from "../../providerInstances";
 import {
+  contextWindowSegments,
   formatContextWindowCompactionMessage,
+  formatPlanLabel,
+  formatUsageTokens,
+  formatUsageWindowLabel,
+  formatUsageWindowReset,
+  sortUsageWindows,
   hasAvailableCompactionProvider,
   hasDismissedResumeCompaction,
   formatContextWindowCost,
@@ -305,5 +311,70 @@ describe("formatContextWindowCost", () => {
   it("keeps ordinary and sub-cent ACP costs readable", () => {
     expect(formatContextWindowCost({ amount: 0.42, currency: "USD" })).toBe("USD 0.42");
     expect(formatContextWindowCost({ amount: 0.0042, currency: "USD" })).toBe("USD 0.0042");
+  });
+});
+
+describe("composer usage popover helpers", () => {
+  it("formats token counts with one decimal", () => {
+    expect(formatUsageTokens(950)).toBe("950");
+    expect(formatUsageTokens(253_900)).toBe("253.9k");
+    expect(formatUsageTokens(180_000)).toBe("180k");
+    expect(formatUsageTokens(1_000_000)).toBe("1M");
+  });
+
+  it("scales token kinds to the used share of the window", () => {
+    const segments = contextWindowSegments({
+      usedTokens: 200_000,
+      usedPercentage: 20,
+      inputTokens: 25_000,
+      cachedInputTokens: 150_000,
+      outputTokens: 25_000,
+      reasoningOutputTokens: null,
+    });
+    expect(segments.map((segment) => segment.key)).toEqual(["cached", "input", "output"]);
+    expect(segments.map((segment) => segment.percent)).toEqual([15, 2.5, 2.5]);
+  });
+
+  it("falls back to one segment without a breakdown", () => {
+    expect(
+      contextWindowSegments({
+        usedTokens: 10,
+        usedPercentage: 5,
+        inputTokens: null,
+        cachedInputTokens: null,
+        outputTokens: null,
+        reasoningOutputTokens: null,
+      }),
+    ).toEqual([{ key: "input", label: "Used", tokens: 10, percent: 5 }]);
+  });
+
+  it("shortens Claude plan labels", () => {
+    expect(formatPlanLabel("Claude Max 5x Subscription")).toBe("Max 5x");
+    expect(formatPlanLabel("ChatGPT Plus")).toBe("ChatGPT Plus");
+    expect(formatPlanLabel(undefined)).toBeNull();
+  });
+
+  it("labels and orders limit windows like Claude", () => {
+    const windows = sortUsageWindows([
+      { kind: "weekly", label: "Weekly · Opus" },
+      { kind: "weekly", label: "Weekly" },
+      { kind: "session", label: "Session" },
+    ] as const);
+    expect(windows.map(formatUsageWindowLabel)).toEqual([
+      "Session limit",
+      "Weekly · Opus",
+      "Weekly · all models",
+    ]);
+  });
+
+  it("formats resets relative within a day and by weekday after", () => {
+    const now = Date.parse("2026-10-11T10:00:00Z");
+    expect(formatUsageWindowReset("2026-10-11T12:53:00Z", now)).toBe("Resets in 2 hr 53 min");
+    expect(formatUsageWindowReset("2026-10-11T10:30:00Z", now)).toBe("Resets in 30 min");
+    expect(formatUsageWindowReset("2026-10-11T09:00:00Z", now)).toBe("Resets now");
+    expect(formatUsageWindowReset(undefined, now)).toBeNull();
+    expect(formatUsageWindowReset("2026-10-18T09:00:00Z", now, "en-US")).toMatch(
+      /^Resets Sun \d{1,2}:00\s?[AP]M$/,
+    );
   });
 });

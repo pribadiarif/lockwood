@@ -31,7 +31,15 @@ export function shouldUseRestingComposerLayout(input: {
   hasMultilinePrompt: boolean;
   /** Whether the timeline has more content than fits above the composer. */
   timelineOverflows: boolean;
+  /**
+   * Minimal composer: rest whenever the prompt is one line, so the input stays
+   * a single row with its controls in the strip below, until it needs room.
+   */
+  alwaysRest?: boolean;
 }): boolean {
+  if (input.alwaysRest) {
+    return !input.isMobileViewport && !input.hasMultilinePrompt && !input.hasExpandedChrome;
+  }
   // Multiline drafts stay readable. Resting only clamps a single prompt
   // line and overlays its actions; non-image attachment and context
   // rows keep their natural height above it while image previews move inline.

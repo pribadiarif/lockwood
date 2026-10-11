@@ -13313,6 +13313,52 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     ),
   );
 
+  it.effect("stores Claude's prompt suggestion on the provider thread after a turn", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeWakeHarness;
+      yield* harness.runtime.startTurn(
+        makeClaudeTestTurnInput({
+          threadId: harness.threadId,
+          providerThread: harness.providerThread,
+          now: yield* DateTime.now,
+          attemptId: RunAttemptId.make("suggestion-attempt"),
+          text: "Rename the helper",
+          attachments: [],
+        }),
+      );
+      for (const frame of [
+        makeAssistantTextFrame({ uuid: "suggestion-work", text: "Renamed it." }),
+        makeResultFrame({ uuid: "suggestion-result", result: "Renamed it." }),
+      ]) {
+        yield* Queue.offer(harness.sdkMessages, frame);
+      }
+      const terminal = yield* Queue.take(harness.terminalReceipts);
+      assert.equal(terminal.status, "completed");
+      yield* Queue.offer(
+        harness.sdkMessages,
+        claudeSdkFrame({
+          type: "prompt_suggestion",
+          suggestion: "  now update the call sites  ",
+          uuid: "00000000-0000-4000-8000-000000009001",
+          session_id: WAKE_NATIVE_SESSION,
+        }),
+      );
+      const suggestions = () =>
+        harness.events.flatMap((event) =>
+          event.type === "provider_thread.updated" && event.providerThread.promptSuggestion != null
+            ? [event.providerThread.promptSuggestion.text]
+            : [],
+        );
+      yield* awaitUntil(() => suggestions().length > 0, "prompt suggestion event");
+      assert.deepEqual(suggestions(), ["now update the call sites"]);
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+      ),
+    ),
+  );
+
   describe("native goals", () => {
     const syntheticFrame = (uuid: string, text: string) =>
       claudeSdkFrame({

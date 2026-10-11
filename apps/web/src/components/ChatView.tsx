@@ -492,6 +492,7 @@ import type { ComposerBannerStackItem } from "./chat/ComposerBannerStack";
 import { ThreadStatusLine } from "./chat/ThreadStatusLine";
 import { formatRelativeTimeLabel, formatRelativeTimeUntilLabel } from "../timestampFormat";
 import { ComposerSurface } from "./chat/ComposerSurface";
+import { resolveComposerPromptSuggestion } from "./chat/composerPromptSuggestion";
 import { resolveThreadSyncPhase } from "../threadSync";
 import {
   hasAvailableCompactionProvider,
@@ -3618,6 +3619,21 @@ export default function ChatView(props: ChatViewProps) {
     isConnecting ||
     isCompacting ||
     runlessWorkStartedAt !== null;
+  const activeProviderThreadSuggestion =
+    serverProjection?.providerThreads.find(
+      (thread) => thread.id === serverProjection.thread.activeProviderThreadId,
+    )?.promptSuggestion ?? null;
+  const composerPromptSuggestion = resolveComposerPromptSuggestion({
+    suggestion:
+      activeProviderThreadSuggestion === null
+        ? null
+        : {
+            text: activeProviderThreadSuggestion.text,
+            createdAtMs: DateTime.toEpochMillis(activeProviderThreadSuggestion.createdAt),
+          },
+    latestRunRequestedAt: activeLatestRun?.requestedAt ?? null,
+    latestRunSettled,
+  });
   const activeContextWindow = useMemo(
     () =>
       deriveLatestContextWindowSnapshot(
@@ -11724,6 +11740,7 @@ export default function ChatView(props: ChatViewProps) {
                               }
                               bannerItems={composerBannerItems}
                               resumeCompactionTokens={resumeCompactionTokens}
+                              promptSuggestion={composerPromptSuggestion}
                               keepFullHistory={keepFullHistory}
                               onToggleKeepFullHistory={toggleKeepFullHistory}
                               // With attachments or contexts aboard the pick just inserts the

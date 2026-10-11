@@ -1013,6 +1013,8 @@ export function makeClaudeQueryOptions(input: {
         ? "bypassPermissions"
         : (input.permissionMode ?? "default")),
     includePartialMessages: true,
+    // One predicted next prompt per settled turn; it reuses the turn's prompt cache.
+    promptSuggestions: true,
     ...(compiledSelection.effort === undefined
       ? {}
       : {
@@ -7677,11 +7679,40 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
         // turn's first frame, so the prompt's own turn streams without delay.
         // A CLI that echoes only on the result (or not at all) is never held,
         // exactly as before this gate.
+        /** Stores Claude's predicted next prompt on its provider thread. */
+        const applyClaudePromptSuggestion = Effect.fnUntraced(function* (
+          message: Extract<SDKMessage, { type: "prompt_suggestion" }>,
+        ) {
+          const text = message.suggestion.trim().slice(0, 2000);
+          if (text.length === 0) return;
+          const providerThread = (yield* Ref.get(lastProviderThreadByNativeThread)).get(
+            message.session_id,
+          );
+          if (providerThread === undefined) return;
+          const now = yield* DateTime.now;
+          const updated = {
+            ...providerThread,
+            promptSuggestion: { text, createdAt: now },
+            updatedAt: now,
+          };
+          yield* rememberProviderThread(updated);
+          yield* emitProviderEvent({
+            type: "provider_thread.updated",
+            driver: CLAUDE_PROVIDER,
+            providerThread: updated,
+          });
+        });
+
         const handleSdkMessage = Effect.fnUntraced(function* (input: {
           readonly query: ClaudeAgentSdkQuerySession;
           readonly message: SDKMessage;
         }) {
           const message = input.message;
+          // Arrives after the turn's result, outside any turn's routing.
+          if (message.type === "prompt_suggestion") {
+            yield* applyClaudePromptSuggestion(message);
+            return;
+          }
           const context = yield* Ref.get(activeTurn);
           const liveQuery = yield* Ref.get(queryContext);
           if (
